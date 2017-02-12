@@ -2,12 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace Equation
 {
 	public class ExpressionCalculator
 	{
-		internal class FunctionOrOperation
+		private class FunctionOrOperation
 		{
 			public FunctionOrOperation()
 			{
@@ -50,7 +51,7 @@ namespace Equation
 				set;
 			}
 
-			public ContextEnum Context
+			internal ContextEnum Context
 			{
 				get;
 				set;
@@ -76,40 +77,14 @@ namespace Equation
 			}
 		}
 
-		readonly bool DEBUG = false;
-
-		internal bool Solve(string expression, out double result)
-		{
-			var parsed = true;
-			result = 0.0;
-			try
-			{
-				var values = ExpressionToPostFix(expression);
-
-				if (DEBUG)
-				{
-					Console.WriteLine("original:");
-					Console.WriteLine(expression);
-					Console.WriteLine("postfixed:");
-					foreach (var item in values)
-						Console.Write("{0} ", item is FunctionOrOperation ? ((FunctionOrOperation)item).Term : item);
-					Console.WriteLine();
-					Console.WriteLine();
-				}
-
-				result = Calculate(values);
-
-			}
-			catch 
-			{
-				parsed = false;
-			}
-			return parsed;
-		}
 
 		public ExpressionCalculator(bool debug = false)
 		{
 			DEBUG = debug;
+
+			_constants.Add("E", () => Math.E);
+			_constants.Add("PI", () => Math.PI);
+			_constants.Add("RAD", () => 180.0 / Math.PI);
 				
 			#region Brackets
 			// left parenthesis
@@ -195,19 +170,66 @@ namespace Equation
 			});
 		}
 
+		Dictionary<string, Func<double>> _constants = new Dictionary<string, Func<double>>();
+
 		List<FunctionOrOperation> _functionsOrOperations = new List<FunctionOrOperation>();
 
-		Dictionary<string, FunctionOrOperation> _indexedFunOrOp;
+		Dictionary<string, FunctionOrOperation> _indexedFunctionOrOperation;
 
 		private Dictionary<string,FunctionOrOperation> Indexed
 		{
 			get
 			{
-				if (_indexedFunOrOp == null || _indexedFunOrOp.Count != _functionsOrOperations.Count)
-					_indexedFunOrOp = _functionsOrOperations
+				if (_indexedFunctionOrOperation == null || _indexedFunctionOrOperation.Count != _functionsOrOperations.Count)
+					_indexedFunctionOrOperation = _functionsOrOperations
 						.ToDictionary(key => key.Term, value => value);
-				return _indexedFunOrOp;
+				return _indexedFunctionOrOperation;
 			}
+		}
+
+		readonly bool DEBUG = false;
+
+		internal bool Solve(string expression, out double result)
+		{
+			var parsed = true;
+			result = 0.0;
+			try
+			{
+				// remove all spaces
+				expression = Regex.Replace(expression, @"\s+", string.Empty);
+				// add spaces before and after signal, operators and brackets
+				expression = Regex.Replace(expression, @"[-+*/()]", " $& ");
+				// adjust unary signals, as before brackets
+				expression = Regex.Replace(expression, @"[-+](?=\s*\()", @"+ ( $&1 ) * ");
+				// adjust unary signals, as before functions
+				expression = Regex.Replace(expression, @"[-+](?=\s*[a-z]+)", @"+ ( $&1 ) * ", RegexOptions.IgnoreCase);
+				// adjust unary signals, as equation beginning
+				expression = Regex.Replace(expression, @"^\s*([-+])\s*([0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)", @" $1$2 ");
+				// adjust unary signals, as operatirs and signas folloed by number
+				expression = Regex.Replace(expression, @"(?<=[+/*-]\s*)([-+])\s*([0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)", @" $1$2 ");
+				// finally, adjust expression to postfix
+				var values = ExpressionToPostFix(expression);
+
+				if (DEBUG)
+				{
+					Console.WriteLine("prepared:");
+					Console.WriteLine(expression);
+
+					Console.WriteLine("postfixed:");
+					foreach (var item in values)
+						Console.Write("{0} ", item is FunctionOrOperation ? ((FunctionOrOperation)item).Term : item);
+					Console.WriteLine();
+					Console.WriteLine();
+				}
+
+				result = Calculate(values);
+
+			}
+			catch
+			{
+				parsed = false;
+			}
+			return parsed;
 		}
 
 		List<object> ExpressionToPostFix(string expression)
@@ -219,12 +241,20 @@ namespace Equation
 			foreach (var item in tokens)
 			{
 				FunctionOrOperation op;
-				if (IsFunctionOrOperation(item, out op))
+				Func<double> value = null;
+				if (IsVariableOrConstant(item, out value))
+				{
+					if (value != null)
+						output.Add(value());
+					else
+						output.Add(item);
+				}
+				else if (IsFunctionOrOperation(item, out op))
 				{
 					if (op.Context.HasFlag(FunctionOrOperation.ContextEnum.STACK))
 					{
-						while (stack.Count > 0 
-						      && !stack.Peek().Context.HasFlag(FunctionOrOperation.ContextEnum.NONE)
+						while (stack.Count > 0
+							  && !stack.Peek().Context.HasFlag(FunctionOrOperation.ContextEnum.NONE)
 							  && ((op.Association == FunctionOrOperation.AssociationEnum.LEFT_TO_RIGHT
 								  && op.Precedence <= stack.Peek().Precedence)
 								  || op.Association == FunctionOrOperation.AssociationEnum.RIGHT_TO_LEFT
@@ -249,8 +279,6 @@ namespace Equation
 						}
 					}
 				}
-				else if (IsVariableOrConstant(item))
-					output.Add(item);				
 			}
 			while (stack.Count > 0)
 			{
@@ -295,16 +323,8 @@ namespace Equation
 						Console.WriteLine();
 					}
 
-
-
 					stack.Push(Convert.ToDouble(result));
 
-					//if (op.Association == FunctionOrOperation.AssociationEnum.LEFT_TO_RIGHT)
-					//{
-					//}
-					//else if (op.Association == FunctionOrOperation.AssociationEnum.RIGHT_TO_LEFT)
-					//{
-					//}
 				}
 				else
 				{
@@ -332,9 +352,20 @@ namespace Equation
 			return false;
 		}
 
-		bool IsVariableOrConstant(string item)
+		bool IsVariableOrConstant(string item, out Func<double> value)
 		{
-			return true;
+			value = null;
+			if (_constants.TryGetValue(item, out value))
+			{
+				return true;
+			}
+
+			if (Regex.IsMatch(item, @"^[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?$"))
+			{
+				return true;
+			}
+
+			return false;
 		}
 	}
 }
