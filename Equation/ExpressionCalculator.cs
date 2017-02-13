@@ -145,7 +145,7 @@ namespace Equation
 				Precedence = 50,
 				Association = FunctionOrOperation.AssociationEnum.LEFT_TO_RIGHT,
 				Context = FunctionOrOperation.ContextEnum.STACK,
-				Calc = (List<double> arg) => arg[0] - arg[1]
+				Calc = (List<double> arg) => arg[1] - arg[0]
 			});
 
 			/// power
@@ -168,7 +168,18 @@ namespace Equation
 				Calc = (List<double> arg) => Math.Sqrt(arg[0]),
 				Parameters = 1
 			});
-		}
+
+            // 
+            _functionsOrOperations.Add(new FunctionOrOperation()
+            {
+                Term = "ABS",
+                Precedence = 110,
+                Association = FunctionOrOperation.AssociationEnum.LEFT_TO_RIGHT,
+                Context = FunctionOrOperation.ContextEnum.STACK,
+                Calc = (List<double> arg) => Math.Abs(arg[0]),
+                Parameters = 1
+            });
+        }
 
 		Dictionary<string, Func<double>> _constants = new Dictionary<string, Func<double>>();
 
@@ -182,7 +193,7 @@ namespace Equation
 			{
 				if (_indexedFunctionOrOperation == null || _indexedFunctionOrOperation.Count != _functionsOrOperations.Count)
 					_indexedFunctionOrOperation = _functionsOrOperations
-						.ToDictionary(key => key.Term, value => value);
+						.ToDictionary(key => key.Term.ToLowerInvariant(), value => value);
 				return _indexedFunctionOrOperation;
 			}
 		}
@@ -195,18 +206,19 @@ namespace Equation
 			result = 0.0;
 			try
 			{
+                
 				// remove all spaces
 				expression = Regex.Replace(expression, @"\s+", string.Empty);
-				// add spaces before and after signal, operators and brackets
-				expression = Regex.Replace(expression, @"[-+*/()]", " $& ");
-				// adjust unary signals, as before brackets
-				expression = Regex.Replace(expression, @"[-+](?=\s*\()", @"+ ( $&1 ) * ");
+                // add spaces before and after signal, operators and brackets
+                expression = Regex.Replace(expression, @"[\-\+\*\/\(\)\^]", " $& ");
+                // adjust unary signals, as before brackets
+                expression = Regex.Replace(expression, @"[\-\+](?=\s*\()", @"+ ( $&1 ) * ");
 				// adjust unary signals, as before functions
-				expression = Regex.Replace(expression, @"[-+](?=\s*[a-z]+)", @"+ ( $&1 ) * ", RegexOptions.IgnoreCase);
+				expression = Regex.Replace(expression, @"[\-\+](?=\s*[a-z]+)", @"+ ( $&1 ) * ", RegexOptions.IgnoreCase);
 				// adjust unary signals, as equation beginning
-				expression = Regex.Replace(expression, @"^\s*([-+])\s*([0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)", @" $1$2 ");
-				// adjust unary signals, as operatirs and signas folloed by number
-				expression = Regex.Replace(expression, @"(?<=[+/*-]\s*)([-+])\s*([0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)", @" $1$2 ");
+				expression = Regex.Replace(expression, @"^\s*([\-\+])\s*([0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)", @" $1$2 ");
+				// adjust unary signals, as operators and signas followed by number
+				expression = Regex.Replace(expression, @"(?<=[\+\/\*\-\^]\s*)([-+])\s*([0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?)", @" $1$2 ");
 				// finally, adjust expression to postfix
 				var values = ExpressionToPostFix(expression);
 
@@ -345,7 +357,7 @@ namespace Equation
 		bool IsFunctionOrOperation(string item, out FunctionOrOperation op)
 		{
 			op = null;
-			if (Indexed.TryGetValue(item, out op))
+			if (Indexed.TryGetValue(item.ToLowerInvariant(), out op))
 			{
 				return true;
 			}
@@ -355,7 +367,7 @@ namespace Equation
 		bool IsVariableOrConstant(string item, out Func<double> value)
 		{
 			value = null;
-			if (_constants.TryGetValue(item, out value))
+			if (_constants.TryGetValue(item.ToUpperInvariant(), out value))
 			{
 				return true;
 			}
