@@ -25,6 +25,25 @@ Constants supported:
   * and, it is easy to implement others.
   
   
+Use:
+
+```csharp
+
+  ExpressionCalculator calc = new ExpressionCalculator();
+
+  double result;
+  var expression = "3 + 4 * 2 / ( 1 - 5 ) ^ 2 ^ 3";
+  if (calc.Solve(expression, out result))
+  {
+    Console.WriteLine("Final result: {0}", result);
+  } 
+   ```
+
+output: *Final result: 3.0001220703125*
+
+
+  
+  
 ps.: it does not implement a full parenthesis check or any syntax analyze.
   
 
