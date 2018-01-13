@@ -1,0 +1,1 @@
+msbuild Equation.sln
