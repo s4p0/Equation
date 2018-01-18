@@ -8,12 +8,7 @@ pipeline {
     }
     stage('Test') {
       steps {
-        powershell(script: 'test.ps1', returnStdout: true)
-      }
-    }
-    stage('executable') {
-      steps {
-        archiveArtifacts(artifacts: 'output', onlyIfSuccessful: true)
+        powershell(script: '.\\test.ps1', returnStdout: true)
       }
     }
   }
